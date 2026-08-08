@@ -2,7 +2,11 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
+import { MockAuthModule } from './auth/mock-auth/mock-auth.module';
 import { CustomersModule } from './customers/customers.module';
+
+const conditionalImports = process.env.MOCK_AUTH_ENABLED === 'true' ? [MockAuthModule] : [];
 
 @Module({
   imports: [
@@ -17,7 +21,9 @@ import { CustomersModule } from './customers/customers.module';
       // never enable synchronize in production — use migrations instead
       synchronize: process.env.NODE_ENV !== 'production',
     }),
+    AuthModule,
     CustomersModule,
+    ...conditionalImports,
   ],
   controllers: [AppController],
   providers: [AppService],
