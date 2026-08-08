@@ -31,3 +31,7 @@ _Avoid_: State, lifecycle
 **RegistrationNumber**:
 The official company identifier issued by a national registry (e.g. KvK, Companies House, EIN); the natural business key of a Customer.
 _Avoid_: Company ID, business number
+
+**Principal**:
+The entity whose identity and access scope are carried in a JWT for the duration of a request; never persisted. A Principal's scope is two-dimensional: a set of allowed Customer IDs and a set of allowed PolicyTypes. Both dimensions must match for a policy row to be visible.
+_Avoid_: User, Caller, Client
