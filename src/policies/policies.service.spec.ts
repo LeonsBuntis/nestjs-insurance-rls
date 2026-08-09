@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { EntityManager } from 'typeorm';
 import { PoliciesService } from './policies.service';
 import { AutoPolicy, VehicleCategory } from './entities/auto-policy.entity';
 import { CoverageTier, HealthPolicy } from './entities/health-policy.entity';
@@ -46,23 +47,43 @@ const autoRow = (policyOverrides = {}): AutoPolicy =>
     policy: basePolicy({ id: 'pol-3', policyNumber: 'POL-003', type: PolicyType.AUTO, ...policyOverrides }),
   }) as AutoPolicy;
 
+const makeQb = (data: unknown[]) => {
+  const qb: { innerJoinAndSelect: jest.Mock; andWhere: jest.Mock; getMany: jest.Mock } = {
+    innerJoinAndSelect: jest.fn(),
+    andWhere: jest.fn(),
+    getMany: jest.fn().mockResolvedValue(data),
+  };
+  qb.innerJoinAndSelect.mockReturnValue(qb);
+  qb.andWhere.mockReturnValue(qb);
+  return qb;
+};
+
 describe('PoliciesService', () => {
   let service: PoliciesService;
-  const healthFind = jest.fn();
-  const propertyFind = jest.fn();
-  const autoFind = jest.fn();
+  let healthQb: ReturnType<typeof makeQb>;
+  let propertyQb: ReturnType<typeof makeQb>;
+  let autoQb: ReturnType<typeof makeQb>;
+  let createQueryBuilder: jest.Mock;
 
   beforeEach(async () => {
-    healthFind.mockResolvedValue([]);
-    propertyFind.mockResolvedValue([]);
-    autoFind.mockResolvedValue([]);
+    healthQb = makeQb([]);
+    propertyQb = makeQb([]);
+    autoQb = makeQb([]);
+
+    createQueryBuilder = jest.fn((entity: Function) => {
+      if (entity === HealthPolicy) return healthQb;
+      if (entity === PropertyPolicy) return propertyQb;
+      if (entity === AutoPolicy) return autoQb;
+    });
+
+    const mockManager = { createQueryBuilder };
 
     const module = await Test.createTestingModule({
       providers: [
         PoliciesService,
-        { provide: getRepositoryToken(HealthPolicy), useValue: { find: healthFind } },
-        { provide: getRepositoryToken(PropertyPolicy), useValue: { find: propertyFind } },
-        { provide: getRepositoryToken(AutoPolicy), useValue: { find: autoFind } },
+        { provide: getRepositoryToken(HealthPolicy), useValue: { manager: mockManager } },
+        { provide: getRepositoryToken(PropertyPolicy), useValue: { manager: mockManager } },
+        { provide: getRepositoryToken(AutoPolicy), useValue: { manager: mockManager } },
       ],
     }).compile();
 
@@ -74,13 +95,13 @@ describe('PoliciesService', () => {
   describe('findAll() with no filters', () => {
     it('queries all three policy tables', async () => {
       await service.findAll({});
-      expect(healthFind).toHaveBeenCalledTimes(1);
-      expect(propertyFind).toHaveBeenCalledTimes(1);
-      expect(autoFind).toHaveBeenCalledTimes(1);
+      expect(createQueryBuilder).toHaveBeenCalledWith(HealthPolicy, 'hp');
+      expect(createQueryBuilder).toHaveBeenCalledWith(PropertyPolicy, 'pp');
+      expect(createQueryBuilder).toHaveBeenCalledWith(AutoPolicy, 'ap');
     });
 
     it('maps health policy to discriminated union with details', async () => {
-      healthFind.mockResolvedValue([healthRow()]);
+      healthQb.getMany.mockResolvedValue([healthRow()]);
       const result = await service.findAll({});
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -96,7 +117,7 @@ describe('PoliciesService', () => {
     });
 
     it('maps property policy to discriminated union with details', async () => {
-      propertyFind.mockResolvedValue([propertyRow()]);
+      propertyQb.getMany.mockResolvedValue([propertyRow()]);
       const result = await service.findAll({});
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -116,7 +137,7 @@ describe('PoliciesService', () => {
     });
 
     it('maps auto policy to discriminated union with details', async () => {
-      autoFind.mockResolvedValue([autoRow()]);
+      autoQb.getMany.mockResolvedValue([autoRow()]);
       const result = await service.findAll({});
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -135,41 +156,60 @@ describe('PoliciesService', () => {
   describe('findAll() with type filter', () => {
     it('only queries health table when type=health', async () => {
       await service.findAll({ type: PolicyType.HEALTH });
-      expect(healthFind).toHaveBeenCalledTimes(1);
-      expect(propertyFind).not.toHaveBeenCalled();
-      expect(autoFind).not.toHaveBeenCalled();
+      expect(createQueryBuilder).toHaveBeenCalledWith(HealthPolicy, 'hp');
+      expect(createQueryBuilder).not.toHaveBeenCalledWith(PropertyPolicy, expect.any(String));
+      expect(createQueryBuilder).not.toHaveBeenCalledWith(AutoPolicy, expect.any(String));
     });
 
     it('only queries property table when type=property', async () => {
       await service.findAll({ type: PolicyType.PROPERTY });
-      expect(healthFind).not.toHaveBeenCalled();
-      expect(propertyFind).toHaveBeenCalledTimes(1);
-      expect(autoFind).not.toHaveBeenCalled();
+      expect(createQueryBuilder).not.toHaveBeenCalledWith(HealthPolicy, expect.any(String));
+      expect(createQueryBuilder).toHaveBeenCalledWith(PropertyPolicy, 'pp');
+      expect(createQueryBuilder).not.toHaveBeenCalledWith(AutoPolicy, expect.any(String));
     });
 
     it('only queries auto table when type=auto', async () => {
       await service.findAll({ type: PolicyType.AUTO });
-      expect(healthFind).not.toHaveBeenCalled();
-      expect(propertyFind).not.toHaveBeenCalled();
-      expect(autoFind).toHaveBeenCalledTimes(1);
+      expect(createQueryBuilder).not.toHaveBeenCalledWith(HealthPolicy, expect.any(String));
+      expect(createQueryBuilder).not.toHaveBeenCalledWith(PropertyPolicy, expect.any(String));
+      expect(createQueryBuilder).toHaveBeenCalledWith(AutoPolicy, 'ap');
     });
   });
 
   describe('findAll() with customer_id filter', () => {
-    it('passes customer_id into the policy where clause', async () => {
+    it('applies customer_id as an andWhere condition on the policy join', async () => {
       await service.findAll({ customerId: 'cust-1' });
-      expect(healthFind).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { policy: expect.objectContaining({ customerId: 'cust-1' }) } }),
-      );
+      expect(healthQb.andWhere).toHaveBeenCalledWith('p.customerId = :cid', { cid: 'cust-1' });
+      expect(propertyQb.andWhere).toHaveBeenCalledWith('p.customerId = :cid', { cid: 'cust-1' });
+      expect(autoQb.andWhere).toHaveBeenCalledWith('p.customerId = :cid', { cid: 'cust-1' });
     });
   });
 
   describe('findAll() with status filter', () => {
-    it('passes status into the policy where clause', async () => {
+    it('applies status as an andWhere condition on the policy join', async () => {
       await service.findAll({ status: PolicyStatus.ACTIVE });
-      expect(healthFind).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { policy: expect.objectContaining({ status: PolicyStatus.ACTIVE }) } }),
-      );
+      expect(healthQb.andWhere).toHaveBeenCalledWith('p.status = :status', { status: PolicyStatus.ACTIVE });
+      expect(propertyQb.andWhere).toHaveBeenCalledWith('p.status = :status', { status: PolicyStatus.ACTIVE });
+      expect(autoQb.andWhere).toHaveBeenCalledWith('p.status = :status', { status: PolicyStatus.ACTIVE });
+    });
+  });
+
+  describe('findAll() with EntityManager', () => {
+    it('uses the provided EntityManager instead of the repo manager', async () => {
+      const emHealthQb = makeQb([healthRow()]);
+      const emCreateQb = jest.fn((entity: Function) => {
+        if (entity === HealthPolicy) return emHealthQb;
+        if (entity === PropertyPolicy) return makeQb([]);
+        if (entity === AutoPolicy) return makeQb([]);
+      });
+      const mockEm = { createQueryBuilder: emCreateQb } as unknown as EntityManager;
+
+      const result = await service.findAll({}, mockEm);
+
+      expect(emCreateQb).toHaveBeenCalled();
+      expect(createQueryBuilder).not.toHaveBeenCalled();
+      expect(result).toHaveLength(1);
     });
   });
 });
+

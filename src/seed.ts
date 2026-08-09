@@ -1,6 +1,5 @@
 import { NestFactory } from '@nestjs/core';
 import { DataSource } from 'typeorm';
-import { getDataSourceToken } from '@nestjs/typeorm';
 import { AppModule } from './app.module';
 import { Customer } from './customers/customer.entity';
 import { Policy } from './policies/entities/policy.entity';
@@ -11,8 +10,22 @@ import { PolicyStatus } from './policies/enums/policy-status.enum';
 import { PolicyType } from './policies/enums/policy-type.enum';
 
 async function seed() {
+  // Boot the app so RlsSetupService.onModuleInit() installs the RLS policies.
   const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
-  const ds = app.get<DataSource>(getDataSourceToken());
+  await app.close();
+
+  // Superusers always bypass RLS (even FORCE ROW LEVEL SECURITY), so use the
+  // postgres role for seeding to avoid app_user being subject to RLS policies.
+  const ds = new DataSource({
+    type: 'postgres',
+    host: process.env.DB_HOST ?? 'localhost',
+    port: parseInt(process.env.DB_PORT ?? '5432'),
+    username: process.env.DB_USER ?? 'postgres',
+    password: process.env.DB_PASSWORD ?? 'postgres',
+    database: process.env.DB_NAME ?? 'insurance',
+    entities: [Customer, Policy, HealthPolicy, PropertyPolicy, AutoPolicy],
+  });
+  await ds.initialize();
 
   await ds.transaction(async (em) => {
     // Remove existing data in dependency order
@@ -60,7 +73,7 @@ async function seed() {
   });
 
   console.log('Seed complete: 3 customers, 7 policies');
-  await app.close();
+  await ds.destroy();
 }
 
 seed().catch((err) => {

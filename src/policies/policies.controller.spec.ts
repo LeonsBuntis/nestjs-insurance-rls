@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
+import { getDataSourceToken } from '@nestjs/typeorm';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AuthModule } from '../auth/auth.module';
@@ -10,6 +11,20 @@ import { PoliciesController } from './policies.controller';
 import { PoliciesService } from './policies.service';
 
 const TEST_SECRET = 'test-secret';
+
+// Minimal DataSource mock so RlsInterceptor can be constructed and run.
+const mockDataSource = () => {
+  const qr: Record<string, jest.Mock> = {
+    connect: jest.fn().mockResolvedValue(undefined),
+    startTransaction: jest.fn().mockResolvedValue(undefined),
+    query: jest.fn().mockResolvedValue(undefined),
+    commitTransaction: jest.fn().mockResolvedValue(undefined),
+    rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+    release: jest.fn().mockResolvedValue(undefined),
+  };
+  qr.manager = qr;
+  return { createQueryRunner: jest.fn().mockReturnValue(qr) };
+};
 
 const mockPolicy = {
   id: 'pol-1',
@@ -34,7 +49,11 @@ describe('PoliciesController', () => {
     const module = await Test.createTestingModule({
       imports: [AuthModule],
       controllers: [PoliciesController],
-      providers: [{ provide: PoliciesService, useValue: { findAll } }],
+      providers: [
+        { provide: PoliciesService, useValue: { findAll } },
+        // Provide a mock DataSource so RlsInterceptor can be instantiated.
+        { provide: getDataSourceToken(), useValue: mockDataSource() },
+      ],
     }).compile();
 
     app = module.createNestApplication();
@@ -84,6 +103,7 @@ describe('PoliciesController', () => {
 
     expect(findAll).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: 'cust-1' }),
+      expect.anything(),
     );
   });
 
@@ -95,6 +115,7 @@ describe('PoliciesController', () => {
 
     expect(findAll).toHaveBeenCalledWith(
       expect.objectContaining({ type: PolicyType.HEALTH }),
+      expect.anything(),
     );
   });
 
@@ -106,6 +127,7 @@ describe('PoliciesController', () => {
 
     expect(findAll).toHaveBeenCalledWith(
       expect.objectContaining({ status: PolicyStatus.ACTIVE }),
+      expect.anything(),
     );
   });
 });

@@ -2,6 +2,7 @@ import {
   CallHandler,
   ExecutionContext,
   Injectable,
+  Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -25,6 +26,8 @@ type RlsRequest = {
 
 @Injectable()
 export class RlsInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(RlsInterceptor.name);
+
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -64,6 +67,7 @@ export class RlsInterceptor implements NestInterceptor {
           next.handle().subscribe({
             next: (v) => subscriber.next(v),
             error: async (err) => {
+              this.logger.error('Handler error — rolling back', err instanceof Error ? err.stack : String(err));
               try {
                 await queryRunner.rollbackTransaction();
               } finally {
@@ -75,6 +79,7 @@ export class RlsInterceptor implements NestInterceptor {
               try {
                 await queryRunner.commitTransaction();
               } catch (err) {
+                this.logger.error('Commit failed — rolling back', err instanceof Error ? (err as Error).stack : String(err));
                 try {
                   await queryRunner.rollbackTransaction();
                 } finally {
@@ -89,6 +94,7 @@ export class RlsInterceptor implements NestInterceptor {
           });
         })
         .catch(async (err) => {
+          this.logger.error('Transaction setup failed', err instanceof Error ? err.stack : String(err));
           await queryRunner.release();
           subscriber.error(err);
         });
