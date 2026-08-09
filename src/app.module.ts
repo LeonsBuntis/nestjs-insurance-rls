@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { MockAuthModule } from './auth/mock-auth/mock-auth.module';
 import { CustomersModule } from './customers/customers.module';
 import { DatabaseModule } from './database/database.module';
+import { PoliciesModule } from './policies/policies.module';
 
 const conditionalImports = process.env.MOCK_AUTH_ENABLED === 'true' ? [MockAuthModule] : [];
 
@@ -25,6 +26,7 @@ const conditionalImports = process.env.MOCK_AUTH_ENABLED === 'true' ? [MockAuthM
     AuthModule,
     CustomersModule,
     DatabaseModule,
+    PoliciesModule,
     ...conditionalImports,
   ],
   controllers: [AppController],

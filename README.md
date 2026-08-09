@@ -26,14 +26,16 @@ The API is available at `http://localhost:3000`.
 
 ## API
 
-| Method | Path | Query params | Description |
-|--------|------|--------------|-------------|
-| `GET` | `/customers/:id/policies` | `status` (optional) | List policies for a customer, optionally filtered by status (`pending`, `active`, `expired`, `cancelled`) |
+| Method | Path | Query params | Auth | Description |
+|--------|------|--------------|------|-------------|
+| `POST` | `/auth/token` | — | — | (Mock) Issue a JWT with `sub`, `customers`, and `policy_types` claims (enabled via `MOCK_AUTH_ENABLED=true`) |
+| `GET` | `/policies` | `customer_id`, `type`, `status` (all optional) | Bearer JWT | List policies, optionally filtered by customer, type (`health`, `property`, `auto`), or status (`pending`, `active`, `expired`, `cancelled`) |
 
 Example:
 
 ```
-GET /customers/some-uuid/policies?status=active
+GET /policies?customer_id=some-uuid&status=active
+Authorization: Bearer <token>
 ```
 
 ## Agent workflow

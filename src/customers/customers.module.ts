@@ -5,12 +5,11 @@ import { HealthPolicy } from '../policies/entities/health-policy.entity';
 import { Policy } from '../policies/entities/policy.entity';
 import { PropertyPolicy } from '../policies/entities/property-policy.entity';
 import { Customer } from './customer.entity';
-import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Customer, Policy, HealthPolicy, PropertyPolicy, AutoPolicy])],
-  controllers: [CustomersController],
+  controllers: [],
   providers: [CustomersService],
 })
 export class CustomersModule {}
