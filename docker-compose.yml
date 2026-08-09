@@ -5,10 +5,13 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ${DB_NAME:-insurance}
+      APP_DB_USER: ${APP_DB_USER:-app_user}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-app_password}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - insurance_pgdata:/var/lib/postgresql
+      - ./db/init-app-user.sh:/docker-entrypoint-initdb.d/01-init-app-user.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-insurance}"]
       interval: 5s
