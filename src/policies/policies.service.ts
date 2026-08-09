@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { EntityManager, FindOptionsWhere, Repository } from 'typeorm';
 import { AutoPolicy } from './entities/auto-policy.entity';
 import { HealthPolicy } from './entities/health-policy.entity';
 import { PropertyPolicy } from './entities/property-policy.entity';
@@ -25,7 +25,11 @@ export class PoliciesService {
     private readonly autoRepo: Repository<AutoPolicy>,
   ) {}
 
-  async findAll(filters: PolicyFilters) {
+  async findAll(filters: PolicyFilters, em?: EntityManager) {
+    const healthRepo = em ? em.getRepository(HealthPolicy) : this.healthRepo;
+    const propertyRepo = em ? em.getRepository(PropertyPolicy) : this.propertyRepo;
+    const autoRepo = em ? em.getRepository(AutoPolicy) : this.autoRepo;
+
     const policyWhere: FindOptionsWhere<Policy> = {};
     if (filters.customerId) policyWhere.customerId = filters.customerId;
     if (filters.status) policyWhere.status = filters.status;
@@ -33,17 +37,17 @@ export class PoliciesService {
     const results: ReturnType<typeof this.mapHealth | typeof this.mapProperty | typeof this.mapAuto>[] = [];
 
     if (!filters.type || filters.type === PolicyType.HEALTH) {
-      const rows = await this.healthRepo.find({ where: { policy: policyWhere }, relations: { policy: true } });
+      const rows = await healthRepo.find({ where: { policy: policyWhere }, relations: { policy: true } });
       results.push(...rows.map((h) => this.mapHealth(h)));
     }
 
     if (!filters.type || filters.type === PolicyType.PROPERTY) {
-      const rows = await this.propertyRepo.find({ where: { policy: policyWhere }, relations: { policy: true } });
+      const rows = await propertyRepo.find({ where: { policy: policyWhere }, relations: { policy: true } });
       results.push(...rows.map((p) => this.mapProperty(p)));
     }
 
     if (!filters.type || filters.type === PolicyType.AUTO) {
-      const rows = await this.autoRepo.find({ where: { policy: policyWhere }, relations: { policy: true } });
+      const rows = await autoRepo.find({ where: { policy: policyWhere }, relations: { policy: true } });
       results.push(...rows.map((a) => this.mapAuto(a)));
     }
 
